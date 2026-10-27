@@ -2,5 +2,14 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "numbers-api",
 	"main": "src/index.ts",
-	"compatibility_date": "2026-10-01"
+	"compatibility_date": "2026-10-01",
+	"d1_databases": [
+		{
+			// No database_id: `wrangler deploy` creates the database in the
+			// deploying account (automatic provisioning).
+			"binding": "DB",
+			"database_name": "numbers-api",
+			"migrations_dir": "migrations"
+		}
+	]
 }
