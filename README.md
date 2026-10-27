@@ -1,133 +1,47 @@
 # Numbers API
 
-Simple API to work with numbers. Created to use an example of teaching how to work with APIs.
+A small web API for working with numbers, built for teaching how APIs work.
 
-## The API
+The operations are deliberately simple (add two numbers, generate a sequence,
+sort a list) so the focus stays on the API itself: URLs, HTTP methods, query
+parameters, JSON bodies, headers, status codes and authentication.
 
-### Add
+Live at: <https://numbers.apps.pipal.in>
+
+## What's in it
+
+| Endpoint | Method | What it does | Teaches |
+|----------|--------|--------------|---------|
+| `/add` | `GET` | Adds two numbers | Query parameters, plain-text responses |
+| `/fibs` | `GET` | Generates Fibonacci numbers | Default values, choosing a response format |
+| `/range` | `POST` | Generates a range of numbers | Sending a JSON body |
+| `/product` | `POST` | Multiplies a list of numbers | JSON in, JSON out |
+| `/sort` | `POST` | Sorts a list of numbers | JSON in, JSON out |
+| `/store` | `GET` `PUT` `DELETE` | Saves named numbers | Resources, HTTP methods, auth tokens, 404s |
+
+## Quick sample
 
 ```
 $ curl 'https://numbers.apps.pipal.in/add?a=3&b=4'
 7
-```
-
-### Fibs
-
-The Fibs API generates a sequence of fibbonacci numbers.
-
-The response is plain text.
-
-**HTTP Method**
-
-GET
-
-**Endpoint**
-
-`/fibs`
-
-**Query Parameters**
-
-| Name | Type | Default Value | Description |
-| -----|------| ------------- |-------------|
-| a | int | 1  | The first number of the fibonacci sequence |
-| b | int | 1  | The second numner of the fibbonacci sequence |
-| b | int | 1  | Number of fibonacci numbers to generate |
-
-
-**Examples**
-
-```
-$ curl -i https://numbers.apps.pipal.in/fibs
-1
-1
-2
-3
-5
-8
-13
-21
-34
-55
-```
-
-### Range
-
-Generates a sequence of numbers. The response is in JSON format.
-
-```
-$ curl \
-    -H 'content-type: application/json' \
-    -d '{"start": 1, "stop": 10}' \
-    https://numbers.apps.pipal.in/range
-{"result": [1, 2, 3, 4, 5, 6, 7, 8, 9]}
 
 $ curl \
-    -H 'content-type: application/json' \
-    -d '{"start": 1, "stop": 10, "step": 2}' \
-    https://numbers.apps.pipal.in/range
-{"result": [1, 3, 5, 7, 9]}
-```
-
-### Product
-
-```
-$ curl \
-    -H 'content-type: application/json' \
-    -d '{"numbers": [5, 4, 3, 2, 1]}' \
-    https://numbers.apps.pipal.in/product
-{"result":120}
-```
-
-### Sort
-
-```
-$ curl \
-    -H 'content-type: application/json' \
-    -d '{"numbers": [5, 4, 3, 2, 1]}' \
+    -H 'Content-Type: application/json' \
+    -d '{"numbers": [5, 3, 9, 1]}' \
     https://numbers.apps.pipal.in/sort
-{"result":[1,2,3,4,5]}
+{"result":[1,3,5,9]}
 ```
 
-### Store
+## Documentation
 
-Store API provides an interface to store numbers with a name.
+See **[docs/api.md](docs/api.md)** for the full reference, with parameters,
+responses, errors and examples for every endpoint.
 
-**List entries in the store**
-
-```
-GET /store
-```
-
-Example:
+## Running locally
 
 ```
-$ curl https://numbers.apps.pipal.in/store
-{"x": 42, "y": 5}
+$ pip install -r requirements.txt
+$ flask --app app run
 ```
 
-**Get a value**
-
-```
-GET /store/<name>
-```
-
-Example:
-
-```
-$ curl https://numbers.apps.pipal.in/store/x
-{"value": 42}
-```
-
-**Set a value**
-
-To set a value, we need to authenticate with API token. The API token is `abcd1234`.
-
-```
-$ curl \
-    -H 'Authorization: Bearer abcd1234' \
-    -H 'Content-type: application/json' \
-    -d '{"value": 45}'
-    https://numbers.apps.pipal.in/store/x
-{"ok": true}
-```
-
+The API is then available at `http://127.0.0.1:5000`.
