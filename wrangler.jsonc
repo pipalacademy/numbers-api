@@ -5,10 +5,9 @@
 	"compatibility_date": "2026-10-01",
 	"d1_databases": [
 		{
-			// No database_id: `wrangler deploy` creates the database in the
-			// deploying account (automatic provisioning).
 			"binding": "DB",
 			"database_name": "numbers-api",
+			"database_id": "3825e129-6110-4c1b-949a-bd6aa7279cec",
 			"migrations_dir": "migrations"
 		}
 	]
