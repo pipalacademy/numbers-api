@@ -3,14 +3,46 @@ import numb
 
 app = Flask(__name__)
 
+class InvalidInput(Exception):
+    pass
+
+@app.errorhandler(InvalidInput)
+def invalid_input(e):
+    return make_response(jsonify({"error": str(e)}), 400)
+
 def get_int_param(name, default=None):
     value = request.args.get(name)
-    if value:
-        try:
-            return int(value)
-        except ValueError:
-            pass
-    return default
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        raise InvalidInput(f"{name} must be an integer")
+
+def is_int(value):
+    # bool is a subclass of int in Python, but true/false aren't numbers here
+    return isinstance(value, int) and not isinstance(value, bool)
+
+def is_number(value):
+    return is_int(value) or isinstance(value, float)
+
+def get_json_object():
+    d = request.json
+    if not isinstance(d, dict):
+        raise InvalidInput("request body must be a JSON object")
+    return d
+
+def get_numbers(d):
+    numbers = d.get("numbers")
+    if not isinstance(numbers, list) or not all(is_number(n) for n in numbers):
+        raise InvalidInput("numbers must be a list of numbers")
+    return numbers
+
+def get_int_field(d, name, default):
+    value = d.get(name, default)
+    if not is_int(value):
+        raise InvalidInput(f"{name} must be an integer")
+    return value
 
 def text_response(value):
     if isinstance(value, str):
@@ -91,24 +123,26 @@ def fibs():
 
 @app.route("/product", methods=["POST"])
 def product():
-    d = request.json
-    result = numb.product(d['numbers'])
+    numbers = get_numbers(get_json_object())
+    result = numb.product(numbers)
     return jsonify({"result": result})
 
 @app.route("/range", methods=["POST"])
 def _range():
-    d = request.json
-    start = d.get("start", 0)
-    stop = d.get("stop", 0)
-    step = d.get("step", 1)
+    d = get_json_object()
+    start = get_int_field(d, "start", 0)
+    stop = get_int_field(d, "stop", 0)
+    step = get_int_field(d, "step", 1)
+    if step == 0:
+        raise InvalidInput("step must not be zero")
 
     result = list(range(start, stop, step))
     return jsonify({"result": result})
 
 @app.route("/sort", methods=["POST"])
 def _sort():
-    d = request.json
-    result = sorted(d['numbers'])
+    numbers = get_numbers(get_json_object())
+    result = sorted(numbers)
     return jsonify({"result": result})
 
 _store = {}
@@ -121,19 +155,23 @@ def check_token():
     auth = request.headers.get("Authorization", "")
     return auth.lower() == "bearer abcd1234"
 
+def unauthorized():
+    response = make_response(jsonify({"error": "unauthorized"}), 401)
+    response.headers["WWW-Authenticate"] = "Bearer"
+    return response
+
 @app.route("/store/<name>", methods=["PUT"])
 def put_value(name):
     if not check_token():
-        return make_response(jsonify({"error": "forbidden"}), 403)
-    value = request.json['value']
-    if isinstance(value, int):
-        _store[name] = value
+        return unauthorized()
+    value = get_int_field(get_json_object(), "value", None)
+    _store[name] = value
     return jsonify({"ok": True})
 
 @app.route("/store/<name>", methods=["DELETE"])
 def delete_value(name):
     if not check_token():
-        return make_response(jsonify({"error": "forbidden"}), 403)
+        return unauthorized()
 
     _store.pop(name, None)
     return jsonify({"ok": True})
