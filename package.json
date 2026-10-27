@@ -1,0 +1,25 @@
+{
+  "name": "numbers-api",
+  "version": "1.0.0",
+  "description": "Simple API to work with numbers. Created to use an example of teaching how to work with APIs.",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply numbers-api --local",
+    "db:migrate:remote": "wrangler d1 migrations apply numbers-api --remote"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anandology/numbers-api.git"
+  },
+  "dependencies": {
+    "hono": "^4.13.14"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261026.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.153.0"
+  }
+}

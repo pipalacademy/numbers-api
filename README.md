@@ -124,10 +124,51 @@ To set a value, we need to authenticate with API token. The API token is `abcd12
 
 ```
 $ curl \
+    -X PUT \
     -H 'Authorization: Bearer abcd1234' \
     -H 'Content-type: application/json' \
-    -d '{"value": 45}'
+    -d '{"value": 45}' \
     https://numbers.apps.pipal.in/store/x
 {"ok": true}
+```
+
+**Delete a value**
+
+```
+$ curl \
+    -X DELETE \
+    -H 'Authorization: Bearer abcd1234' \
+    https://numbers.apps.pipal.in/store/x
+{"ok": true}
+```
+
+## Development
+
+The API runs on [Cloudflare Workers](https://developers.cloudflare.com/workers/), written in TypeScript with [Hono](https://hono.dev/). The store is kept in a [D1](https://developers.cloudflare.com/d1/) database.
+
+```
+$ npm install
+$ cp .dev.vars.example .dev.vars
+$ npm run db:migrate:local
+$ npm run dev
+```
+
+The API is now available at http://localhost:8787/.
+
+## Deployment
+
+One-time setup:
+
+```
+$ npx wrangler login
+$ npx wrangler d1 create numbers-api        # put the printed database_id in wrangler.jsonc
+$ npm run db:migrate:remote
+$ npx wrangler secret put API_TOKEN          # enter abcd1234
+```
+
+Deploy:
+
+```
+$ npm run deploy
 ```
 
