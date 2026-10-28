@@ -100,40 +100,96 @@ HOME = """
 <!doctype html>
 <html>
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Numbers API</title>
   <style type="text/css">
-
+    body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+    pre { background: #f4f4f4; padding: 0.75rem; overflow-x: auto; }
+    code { font-size: 0.9em; }
+    h2 { margin-top: 2rem; border-bottom: 1px solid #ddd; }
   </style>
 </head>
 <body>
     <h1>Numbers API</h1>
     <p>
-    Simple API to work with numbers.
+    A small API for working with numbers, built for learning how APIs work.
+    See the <a href="https://github.com/pipalacademy/numbers-api/blob/main/docs/api.md">API reference</a>
+    for every parameter, response and error.
     </p>
 
     <h2>Add</h2>
-    <p>API to add two numbers.<p>
-
-    <p>Example:</p>
-    <a href="/add?a=3&b=4">/add?a=3&b=4</a>
+    <p>Adds two numbers.</p>
+    <p><a href="/add?a=3&b=4">/add?a=3&amp;b=4</a></p>
 
     <h2>Fibs</h2>
+    <p>Generates Fibonacci numbers.</p>
+    <p><a href="/fibs?a=3&b=4&n=10">/fibs?a=3&amp;b=4&amp;n=10</a></p>
+    <p><a href="/fibs?n=5&format=json">/fibs?n=5&amp;format=json</a></p>
 
-    <p>Generates fibonacci numbers.</p>
+    <h2>Random</h2>
+    <p>Generates random numbers between min and max.</p>
+    <p><a href="/random?min=1&max=6&count=10">/random?min=1&amp;max=6&amp;count=10</a></p>
+    <p><a href="/random?count=3&format=json">/random?count=3&amp;format=json</a></p>
 
-    <a href="/fibs?a=3&b=4&n=10">/fibs?a=3&b=4&n=10</a>
+    <h2>Range</h2>
+    <p>Generates a range of numbers.</p>
+<pre>$ curl -H 'Content-Type: application/json' \\
+    -d '{"start": 1, "stop": 10, "step": 2}' \\
+    BASE/range
+{"result":[1,3,5,7,9]}</pre>
 
-    <h2>Documentation</h2>
+    <h2>Product, Sum, Average, Sort</h2>
+    <p>Multiply, add, average or sort a list of numbers.</p>
+<pre>$ curl -H 'Content-Type: application/json' \\
+    -d '{"numbers": [5, 4, 3, 2, 1]}' \\
+    BASE/product
+{"result":120}</pre>
+    <p>Replace <code>/product</code> with <code>/sum</code>, <code>/average</code> or <code>/sort</code>.</p>
+
+    <h2>Stats</h2>
+    <p>Count, sum, mean, min and max of a list of numbers.</p>
+<pre>$ curl -H 'Content-Type: application/json' \\
+    -d '{"numbers": [1, 2, 3, 4, 5]}' \\
+    BASE/stats
+{"count":5,"sum":15,"mean":3.0,"min":1,"max":5}</pre>
+
+    <h2>Me</h2>
     <p>
-    See <a href="https://github.com/anandology/numbers-api">Github repo</a> to know more details about the API.
+    Tells you who your token belongs to. A token is your username followed by
+    <code>-token-123</code>, e.g. <code>alice-token-123</code>.
     </p>
+<pre>$ curl -H 'Authorization: Bearer alice-token-123' BASE/me
+{"username":"alice"}</pre>
+
+    <h2>Store</h2>
+    <p>Save numbers under a name. Every user has their own store.</p>
+<pre>$ AUTH='Authorization: Bearer alice-token-123'
+
+$ curl -H "$AUTH" -H 'Content-Type: application/json' \\
+    -d '{"value": 42}' BASE/store/x
+{"value":42}
+
+$ curl -X PUT -H "$AUTH" -H 'Content-Type: application/json' \\
+    -d '{"value": 43}' BASE/store/x
+{"value":43}
+
+$ curl -H "$AUTH" BASE/store/x
+{"value":43}
+
+$ curl -H "$AUTH" BASE/store
+{"x":43}
+
+$ curl -X DELETE -H "$AUTH" BASE/store/x
+{"ok":true}</pre>
 </body>
 </html>
 """
 
 @app.route("/")
 def home():
-    return HOME
+    # show examples with the URL the page was loaded from
+    return HOME.replace("BASE", request.host_url.rstrip("/"))
 
 @app.route("/add")
 def add():
