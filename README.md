@@ -43,9 +43,10 @@ responses, errors and examples for every endpoint.
 
 ## Running locally
 
+The project is managed with [uv](https://docs.astral.sh/uv/).
+
 ```
-$ pip install -r requirements.txt
-$ flask --app app run
+$ uv run flask --app app run
 ```
 
 The API is then available at `http://127.0.0.1:5000`.
@@ -53,6 +54,5 @@ The API is then available at `http://127.0.0.1:5000`.
 To run the tests:
 
 ```
-$ pip install pytest
-$ pytest
+$ uv run pytest
 ```
