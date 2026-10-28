@@ -20,7 +20,8 @@ Live at: <https://numbers.apps.pipal.in>
 | `/sum`, `/average` | `POST` | Adds or averages a list of numbers | JSON in, JSON out, errors |
 | `/stats` | `POST` | Count, sum, mean, min and max of a list | JSON responses with several fields |
 | `/sort` | `POST` | Sorts a list of numbers | JSON in, JSON out |
-| `/store` | `GET` `PUT` `DELETE` | Saves named numbers | Resources, HTTP methods, auth tokens, 404s |
+| `/me` | `GET` | Says who your token belongs to | Auth tokens, 401s |
+| `/store` | `GET` `POST` `PUT` `DELETE` | Saves named numbers, one store per user | Resources, HTTP methods, 201/404/409 |
 
 ## Quick sample
 
@@ -48,3 +49,10 @@ $ flask --app app run
 ```
 
 The API is then available at `http://127.0.0.1:5000`.
+
+To run the tests:
+
+```
+$ pip install pytest
+$ pytest
+```

@@ -17,7 +17,9 @@ status code and headers along with the body.
 - [Average](#average) — `POST /average`
 - [Stats](#stats) — `POST /stats`
 - [Sort](#sort) — `POST /sort`
-- [Store](#store) — `GET`, `PUT`, `DELETE /store/<name>`
+- [Authentication](#authentication)
+- [Me](#me) — `GET /me`
+- [Store](#store) — `GET`, `POST`, `PUT`, `DELETE /store/<name>`
 - [Errors](#errors)
 
 ## Basics
@@ -28,6 +30,7 @@ The API uses two styles of request, so you can learn both.
 |-------|-----------|--------------------|-------------------|
 | Query parameters | `/add`, `/fibs`, `/random` | In the URL: `?a=3&b=4` | Plain text (JSON optional for `/fibs` and `/random`) |
 | JSON body | `/range`, `/product`, `/sum`, `/average`, `/stats`, `/sort`, `/store` | `POST`/`PUT` with a JSON body | JSON |
+| Token | `/me`, `/store` | An `Authorization` header | JSON |
 
 When sending a JSON body, you must set the `Content-Type` header:
 
@@ -457,60 +460,105 @@ Invalid input returns `400 Bad Request`, as for [Product](#product).
 
 ---
 
-## Store
+## Authentication
 
-A simple key-value store: save an integer under a name, read it back, delete
-it. This is the only part of the API that changes data on the server, so
-writes require authentication.
-
-| Method   | Path            | Auth required | Description |
-|----------|-----------------|---------------|-------------|
-| `GET`    | `/store`        | no            | List all entries |
-| `GET`    | `/store/<name>` | no            | Get one value |
-| `PUT`    | `/store/<name>` | yes           | Create or update a value |
-| `DELETE` | `/store/<name>` | yes           | Delete a value |
-
-The store is shared by everyone using the server and lives in memory, so it
-is cleared whenever the server restarts.
-
-### Authentication
-
-Write requests need an API token in the `Authorization` header:
+`/me` and every `/store` endpoint need a token, sent in the `Authorization`
+header:
 
 ```
-Authorization: Bearer abcd1234
+Authorization: Bearer alice-token-123
 ```
 
-The token is `abcd1234`. It is public on purpose; this is a teaching API.
-Requests with a missing or wrong token get `401 Unauthorized`:
+A token is your username followed by `-token-123`. Usernames are lowercase
+letters, digits, `_` and `-`, up to 32 characters. Pick any username; the
+server doesn't keep a list of users.
+
+> In a real API, a token is a long random secret the server gives you, and
+> nobody can guess anyone else's. These tokens are guessable on purpose so
+> nothing has to be handed out in class. Anyone can use `bob-token-123` and
+> see Bob's data, so don't store anything you care about.
+
+A missing or invalid token gets `401 Unauthorized`:
 
 ```
-$ curl -i -X DELETE https://numbers.apps.pipal.in/store/x
+$ curl -i https://numbers.apps.pipal.in/me
 HTTP/1.1 401 UNAUTHORIZED
 WWW-Authenticate: Bearer
 Content-Type: application/json
 
-{"error":"unauthorized"}
+{"error":"missing token, expected header 'Authorization: Bearer <username>-token-123'"}
+
+$ curl -H 'Authorization: Bearer hello' https://numbers.apps.pipal.in/me
+{"error":"invalid token, expected <username>-token-123"}
 ```
 
 > `401 Unauthorized` means "I don't know who you are" (no valid credentials).
 > `403 Forbidden`, which this API doesn't use, means "I know who you are, but
 > you're not allowed to do this".
 
-### List all entries
+---
+
+## Me
+
+Returns the username the token belongs to. Useful for checking that your
+token works.
+
+```
+GET /me
+```
+
+**Example**
+
+```
+$ curl -H 'Authorization: Bearer alice-token-123' \
+    https://numbers.apps.pipal.in/me
+{"username":"alice"}
+```
+
+---
+
+## Store
+
+A key-value store: save a number under a name, read it back, change it,
+delete it. Every user has their own store, and the token decides whose store
+you're working with. Alice and Bob can both have an `x` with different values.
+
+All store endpoints need a token. See [Authentication](#authentication).
+
+| Method   | Path            | Description | Success | Common errors |
+|----------|-----------------|-------------|---------|---------------|
+| `GET`    | `/store`        | List all your values | `200` | |
+| `GET`    | `/store/<name>` | Get one value | `200` | `404` no such name |
+| `POST`   | `/store/<name>` | Create a value | `201` | `409` name already exists |
+| `PUT`    | `/store/<name>` | Update a value | `200` | `404` no such name |
+| `DELETE` | `/store/<name>` | Delete a value | `200` | `404` no such name |
+
+`POST` creates and `PUT` updates. This is a common convention in APIs: `POST`
+fails if the name is taken, and `PUT` fails if it doesn't exist yet, so you
+never overwrite or create something by accident.
+
+Values are numbers, either integers or decimals. The store lives in memory,
+so it is cleared whenever the server restarts.
+
+The examples below use a shell variable for the header:
+
+```
+$ AUTH='Authorization: Bearer alice-token-123'
+```
+
+### List all values
 
 ```
 GET /store
 ```
 
-Returns a JSON object mapping each name to its value.
+Returns a JSON object mapping each name to its value. An empty store returns
+`{}`.
 
 ```
-$ curl https://numbers.apps.pipal.in/store
+$ curl -H "$AUTH" https://numbers.apps.pipal.in/store
 {"x":42,"y":5}
 ```
-
-An empty store returns `{}`.
 
 ### Get a value
 
@@ -519,21 +567,55 @@ GET /store/<name>
 ```
 
 ```
-$ curl https://numbers.apps.pipal.in/store/x
+$ curl -H "$AUTH" https://numbers.apps.pipal.in/store/x
 {"value":42}
 ```
 
-If the name does not exist, the response is `404 Not Found`:
+If the name doesn't exist:
 
 ```
-$ curl -i https://numbers.apps.pipal.in/store/nope
+$ curl -i -H "$AUTH" https://numbers.apps.pipal.in/store/nope
 HTTP/1.1 404 NOT FOUND
 Content-Type: application/json
 
-{"error":"not found"}
+{"error":"nope not found"}
 ```
 
-### Set a value
+### Create a value
+
+```
+POST /store/<name>
+```
+
+**Request body (JSON)**
+
+| Field   | Type   | Required | Description |
+|---------|--------|----------|-------------|
+| `value` | number | yes      | The value to store |
+
+Returns `201 Created`, the stored value, and a `Location` header with the URL
+of the new value.
+
+```
+$ curl -i \
+    -H "$AUTH" \
+    -H 'Content-Type: application/json' \
+    -d '{"value": 42}' \
+    https://numbers.apps.pipal.in/store/x
+HTTP/1.1 201 CREATED
+Content-Type: application/json
+Location: /store/x
+
+{"value":42}
+```
+
+If the name already exists, the response is `409 Conflict`:
+
+```
+{"error":"x already exists, use PUT to update it"}
+```
+
+### Update a value
 
 ```
 PUT /store/<name>
@@ -541,25 +623,24 @@ PUT /store/<name>
 
 **Request body (JSON)**
 
-| Field   | Type | Required | Description |
-|---------|------|----------|-------------|
-| `value` | int  | yes      | The value to store |
+| Field   | Type   | Required | Description |
+|---------|--------|----------|-------------|
+| `value` | number | yes      | The new value |
 
 ```
 $ curl \
     -X PUT \
-    -H 'Authorization: Bearer abcd1234' \
+    -H "$AUTH" \
     -H 'Content-Type: application/json' \
-    -d '{"value": 42}' \
+    -d '{"value": 43}' \
     https://numbers.apps.pipal.in/store/x
-{"ok":true}
+{"value":43}
 ```
 
-If `name` already exists, its value is replaced. A missing or non-integer
-`value` (e.g. `"hello"` or `4.5`) returns `400 Bad Request`:
+If the name doesn't exist, the response is `404 Not Found`:
 
-```json
-{"error": "value must be an integer"}
+```
+{"error":"x not found, use POST to create it"}
 ```
 
 ### Delete a value
@@ -569,35 +650,52 @@ DELETE /store/<name>
 ```
 
 ```
-$ curl \
-    -X DELETE \
-    -H 'Authorization: Bearer abcd1234' \
-    https://numbers.apps.pipal.in/store/x
+$ curl -X DELETE -H "$AUTH" https://numbers.apps.pipal.in/store/x
 {"ok":true}
 ```
 
-Deleting a name that does not exist also returns `{"ok": true}`.
+If the name doesn't exist, the response is `404 Not Found`.
+
+### Invalid values
+
+A missing `value`, or one that isn't a number, returns `400 Bad Request`:
+
+```
+$ curl \
+    -H "$AUTH" \
+    -H 'Content-Type: application/json' \
+    -d '{"value": "hello"}' \
+    https://numbers.apps.pipal.in/store/x
+{"error":"value must be a number"}
+```
 
 ### Walkthrough
 
 Try the whole cycle:
 
 ```
-$ curl -X PUT -H 'Authorization: Bearer abcd1234' \
-    -H 'Content-Type: application/json' -d '{"value": 7}' \
-    https://numbers.apps.pipal.in/store/lucky
-{"ok":true}
+$ AUTH='Authorization: Bearer alice-token-123'
 
-$ curl https://numbers.apps.pipal.in/store/lucky
+$ curl -H "$AUTH" -H 'Content-Type: application/json' -d '{"value": 7}' \
+    https://numbers.apps.pipal.in/store/lucky
 {"value":7}
 
-$ curl -X DELETE -H 'Authorization: Bearer abcd1234' \
+$ curl -X PUT -H "$AUTH" -H 'Content-Type: application/json' -d '{"value": 8}' \
     https://numbers.apps.pipal.in/store/lucky
-{"ok":true}
+{"value":8}
 
-$ curl https://numbers.apps.pipal.in/store/lucky
-{"error":"not found"}
+$ curl -H "$AUTH" https://numbers.apps.pipal.in/store/lucky
+{"value":8}
+
+$ curl -H 'Authorization: Bearer bob-token-123' \
+    https://numbers.apps.pipal.in/store/lucky
+{"error":"lucky not found"}
+
+$ curl -X DELETE -H "$AUTH" https://numbers.apps.pipal.in/store/lucky
+{"ok":true}
 ```
+
+Bob gets a `404` because `lucky` is in Alice's store, not his.
 
 ---
 
@@ -612,10 +710,12 @@ Every error has a JSON body with an `error` field saying what went wrong:
 | Status | Meaning | When it happens |
 |--------|---------|-----------------|
 | `200 OK` | Success | |
+| `201 Created` | Something new was created | `POST /store/<name>` |
 | `400 Bad Request` | Invalid input | A parameter or field is missing or has the wrong type, or the body is missing, isn't valid JSON, or isn't a JSON object |
-| `401 Unauthorized` | Bad or missing token | `PUT`/`DELETE` on `/store/<name>` without `Authorization: Bearer abcd1234` |
-| `404 Not Found` | No such resource | `GET /store/<name>` for a name that isn't stored, or an unknown URL |
-| `405 Method Not Allowed` | Wrong HTTP method | e.g. `GET /range`, or `POST /store/x` (use `PUT`) |
+| `401 Unauthorized` | Bad or missing token | `/me` or `/store` without a valid `Authorization` header |
+| `404 Not Found` | No such resource | A store name you haven't created, or an unknown URL |
+| `405 Method Not Allowed` | Wrong HTTP method | e.g. `GET /range` or `GET /product` |
+| `409 Conflict` | Already exists | `POST /store/<name>` for a name that is already stored |
 | `415 Unsupported Media Type` | Body isn't declared as JSON | `POST`/`PUT` with a body but without `Content-Type: application/json` |
 | `500 Internal Server Error` | Bug in the server | Shouldn't happen; please report it |
 

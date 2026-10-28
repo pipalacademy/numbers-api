@@ -1,5 +1,6 @@
 import random
-from flask import Flask, request, make_response, jsonify
+import re
+from flask import Flask, request, make_response, jsonify, url_for
 from werkzeug.exceptions import HTTPException
 import numb
 
@@ -7,14 +8,17 @@ app = Flask(__name__)
 # keep keys in the order the endpoints build them, e.g. /stats
 app.json.sort_keys = False
 
-class InvalidInput(Exception):
+class APIError(Exception):
     def __init__(self, message, status=400):
         super().__init__(message)
         self.status = status
 
-@app.errorhandler(InvalidInput)
-def invalid_input(e):
-    return make_response(jsonify({"error": str(e)}), e.status)
+@app.errorhandler(APIError)
+def api_error(e):
+    response = make_response(jsonify({"error": str(e)}), e.status)
+    if e.status == 401:
+        response.headers["WWW-Authenticate"] = "Bearer"
+    return response
 
 @app.errorhandler(HTTPException)
 def http_error(e):
@@ -31,7 +35,7 @@ def get_int_param(name, default=None):
     try:
         return int(value)
     except ValueError:
-        raise InvalidInput(f"{name} must be an integer")
+        raise APIError(f"{name} must be an integer")
 
 def is_int(value):
     # bool is a subclass of int in Python, but true/false aren't numbers here
@@ -42,32 +46,39 @@ def is_number(value):
 
 def get_json_object():
     if not request.get_data():
-        raise InvalidInput("request body is required")
+        raise APIError("request body is required")
     if not request.is_json:
-        raise InvalidInput("Content-Type must be application/json", status=415)
+        raise APIError("Content-Type must be application/json", status=415)
     d = request.get_json(silent=True)
     if d is None:
-        raise InvalidInput("request body is not valid JSON")
+        raise APIError("request body is not valid JSON")
     if not isinstance(d, dict):
-        raise InvalidInput("request body must be a JSON object")
+        raise APIError("request body must be a JSON object")
     return d
 
 def get_numbers(d, allow_empty=True):
     if "numbers" not in d:
-        raise InvalidInput("numbers is required")
+        raise APIError("numbers is required")
     numbers = d["numbers"]
     if not isinstance(numbers, list):
-        raise InvalidInput("numbers must be a list")
+        raise APIError("numbers must be a list")
     if not all(is_number(n) for n in numbers):
-        raise InvalidInput("numbers must contain only numbers")
+        raise APIError("numbers must contain only numbers")
     if not numbers and not allow_empty:
-        raise InvalidInput("numbers must not be empty")
+        raise APIError("numbers must not be empty")
     return numbers
+
+def get_number_field(d, name):
+    if name not in d:
+        raise APIError(f"{name} is required")
+    if not is_number(d[name]):
+        raise APIError(f"{name} must be a number")
+    return d[name]
 
 def get_int_field(d, name, default):
     value = d.get(name, default)
     if not is_int(value):
-        raise InvalidInput(f"{name} must be an integer")
+        raise APIError(f"{name} must be an integer")
     return value
 
 def text_response(value):
@@ -155,9 +166,9 @@ def _random():
     hi = get_int_param("max", 100)
     count = get_int_param("count", 1)
     if lo > hi:
-        raise InvalidInput("min must not be greater than max")
+        raise APIError("min must not be greater than max")
     if not 1 <= count <= 1000:
-        raise InvalidInput("count must be between 1 and 1000")
+        raise APIError("count must be between 1 and 1000")
     numbers = [random.randint(lo, hi) for _ in range(count)]
 
     if request.args.get("format") == "json":
@@ -199,7 +210,7 @@ def _range():
     stop = get_int_field(d, "stop", 0)
     step = get_int_field(d, "step", 1)
     if step == 0:
-        raise InvalidInput("step must not be zero")
+        raise APIError("step must not be zero")
 
     result = list(range(start, stop, step))
     return jsonify({"result": result})
@@ -210,43 +221,68 @@ def _sort():
     result = sorted(numbers)
     return jsonify({"result": result})
 
-_store = {}
+# Tokens are not secret: anyone can use <username>-token-123.
+# This keeps the API easy to use in class while still teaching auth headers.
+TOKEN_RE = re.compile(r"^([a-z0-9][a-z0-9_-]{0,31})-token-123$")
+
+def current_user():
+    auth = request.headers.get("Authorization", "")
+    scheme, _, token = auth.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise APIError("missing token, expected header 'Authorization: Bearer <username>-token-123'", status=401)
+    match = TOKEN_RE.match(token.strip())
+    if not match:
+        raise APIError("invalid token, expected <username>-token-123", status=401)
+    return match.group(1)
+
+@app.route("/me")
+def me():
+    return jsonify({"username": current_user()})
+
+# username -> {name: value}
+_stores = {}
+
+def user_store():
+    return _stores.setdefault(current_user(), {})
 
 @app.route("/store")
 def list_values():
-    return jsonify(_store)
-
-def check_token():
-    auth = request.headers.get("Authorization", "")
-    return auth.lower() == "bearer abcd1234"
-
-def unauthorized():
-    response = make_response(jsonify({"error": "unauthorized"}), 401)
-    response.headers["WWW-Authenticate"] = "Bearer"
-    return response
-
-@app.route("/store/<name>", methods=["PUT"])
-def put_value(name):
-    if not check_token():
-        return unauthorized()
-    value = get_int_field(get_json_object(), "value", None)
-    _store[name] = value
-    return jsonify({"ok": True})
-
-@app.route("/store/<name>", methods=["DELETE"])
-def delete_value(name):
-    if not check_token():
-        return unauthorized()
-
-    _store.pop(name, None)
-    return jsonify({"ok": True})
+    return jsonify(user_store())
 
 @app.route("/store/<name>", methods=["GET"])
 def get_value(name):
-    if name not in _store:
-        return make_response(jsonify({"error": "not found"}), 404)
-    value = _store[name]
+    store = user_store()
+    if name not in store:
+        raise APIError(f"{name} not found", status=404)
+    return jsonify({"value": store[name]})
+
+@app.route("/store/<name>", methods=["POST"])
+def create_value(name):
+    store = user_store()
+    value = get_number_field(get_json_object(), "value")
+    if name in store:
+        raise APIError(f"{name} already exists, use PUT to update it", status=409)
+    store[name] = value
+    response = make_response(jsonify({"value": value}), 201)
+    response.headers["Location"] = url_for("get_value", name=name)
+    return response
+
+@app.route("/store/<name>", methods=["PUT"])
+def update_value(name):
+    store = user_store()
+    value = get_number_field(get_json_object(), "value")
+    if name not in store:
+        raise APIError(f"{name} not found, use POST to create it", status=404)
+    store[name] = value
     return jsonify({"value": value})
+
+@app.route("/store/<name>", methods=["DELETE"])
+def delete_value(name):
+    store = user_store()
+    if name not in store:
+        raise APIError(f"{name} not found", status=404)
+    del store[name]
+    return jsonify({"ok": True})
 
 if __name__ == "__main__":
     app.run()
