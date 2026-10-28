@@ -1,14 +1,28 @@
+import random
 from flask import Flask, request, make_response, jsonify
+from werkzeug.exceptions import HTTPException
 import numb
 
 app = Flask(__name__)
+# keep keys in the order the endpoints build them, e.g. /stats
+app.json.sort_keys = False
 
 class InvalidInput(Exception):
-    pass
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
 
 @app.errorhandler(InvalidInput)
 def invalid_input(e):
-    return make_response(jsonify({"error": str(e)}), 400)
+    return make_response(jsonify({"error": str(e)}), e.status)
+
+@app.errorhandler(HTTPException)
+def http_error(e):
+    # Flask's own errors (404, 405, ...) are HTML by default
+    response = e.get_response()
+    response.set_data(jsonify({"error": e.name.lower()}).get_data())
+    response.content_type = "application/json"
+    return response
 
 def get_int_param(name, default=None):
     value = request.args.get(name)
@@ -27,15 +41,27 @@ def is_number(value):
     return is_int(value) or isinstance(value, float)
 
 def get_json_object():
-    d = request.json
+    if not request.get_data():
+        raise InvalidInput("request body is required")
+    if not request.is_json:
+        raise InvalidInput("Content-Type must be application/json", status=415)
+    d = request.get_json(silent=True)
+    if d is None:
+        raise InvalidInput("request body is not valid JSON")
     if not isinstance(d, dict):
         raise InvalidInput("request body must be a JSON object")
     return d
 
-def get_numbers(d):
-    numbers = d.get("numbers")
-    if not isinstance(numbers, list) or not all(is_number(n) for n in numbers):
-        raise InvalidInput("numbers must be a list of numbers")
+def get_numbers(d, allow_empty=True):
+    if "numbers" not in d:
+        raise InvalidInput("numbers is required")
+    numbers = d["numbers"]
+    if not isinstance(numbers, list):
+        raise InvalidInput("numbers must be a list")
+    if not all(is_number(n) for n in numbers):
+        raise InvalidInput("numbers must contain only numbers")
+    if not numbers and not allow_empty:
+        raise InvalidInput("numbers must not be empty")
     return numbers
 
 def get_int_field(d, name, default):
@@ -121,11 +147,50 @@ def fibs():
     else:
         return text_response(numbers)
 
+@app.route("/random")
+def _random():
+    """Returns random integers between min and max, inclusive.
+    """
+    lo = get_int_param("min", 1)
+    hi = get_int_param("max", 100)
+    count = get_int_param("count", 1)
+    if lo > hi:
+        raise InvalidInput("min must not be greater than max")
+    if not 1 <= count <= 1000:
+        raise InvalidInput("count must be between 1 and 1000")
+    numbers = [random.randint(lo, hi) for _ in range(count)]
+
+    if request.args.get("format") == "json":
+        return jsonify({"result": numbers})
+    else:
+        return text_response(numbers)
+
 @app.route("/product", methods=["POST"])
 def product():
     numbers = get_numbers(get_json_object())
     result = numb.product(numbers)
     return jsonify({"result": result})
+
+@app.route("/sum", methods=["POST"])
+def _sum():
+    numbers = get_numbers(get_json_object())
+    return jsonify({"result": sum(numbers)})
+
+@app.route("/average", methods=["POST"])
+def average():
+    numbers = get_numbers(get_json_object(), allow_empty=False)
+    return jsonify({"result": sum(numbers) / len(numbers)})
+
+@app.route("/stats", methods=["POST"])
+def stats():
+    numbers = get_numbers(get_json_object(), allow_empty=False)
+    return jsonify({
+        "count": len(numbers),
+        "sum": sum(numbers),
+        "mean": sum(numbers) / len(numbers),
+        "min": min(numbers),
+        "max": max(numbers),
+    })
 
 @app.route("/range", methods=["POST"])
 def _range():
@@ -179,7 +244,7 @@ def delete_value(name):
 @app.route("/store/<name>", methods=["GET"])
 def get_value(name):
     if name not in _store:
-        return make_response(jsonify({"error": "not-found"}), 404)
+        return make_response(jsonify({"error": "not found"}), 404)
     value = _store[name]
     return jsonify({"value": value})
 

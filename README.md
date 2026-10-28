@@ -14,8 +14,11 @@ Live at: <https://numbers.apps.pipal.in>
 |----------|--------|--------------|---------|
 | `/add` | `GET` | Adds two numbers | Query parameters, plain-text responses |
 | `/fibs` | `GET` | Generates Fibonacci numbers | Default values, choosing a response format |
+| `/random` | `GET` | Generates random numbers | Query parameters, input validation |
 | `/range` | `POST` | Generates a range of numbers | Sending a JSON body |
 | `/product` | `POST` | Multiplies a list of numbers | JSON in, JSON out |
+| `/sum`, `/average` | `POST` | Adds or averages a list of numbers | JSON in, JSON out, errors |
+| `/stats` | `POST` | Count, sum, mean, min and max of a list | JSON responses with several fields |
 | `/sort` | `POST` | Sorts a list of numbers | JSON in, JSON out |
 | `/store` | `GET` `PUT` `DELETE` | Saves named numbers | Resources, HTTP methods, auth tokens, 404s |
 

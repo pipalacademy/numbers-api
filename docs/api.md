@@ -10,8 +10,12 @@ status code and headers along with the body.
 - [Basics](#basics)
 - [Add](#add) — `GET /add`
 - [Fibs](#fibs) — `GET /fibs`
+- [Random](#random) — `GET /random`
 - [Range](#range) — `POST /range`
 - [Product](#product) — `POST /product`
+- [Sum](#sum) — `POST /sum`
+- [Average](#average) — `POST /average`
+- [Stats](#stats) — `POST /stats`
 - [Sort](#sort) — `POST /sort`
 - [Store](#store) — `GET`, `PUT`, `DELETE /store/<name>`
 - [Errors](#errors)
@@ -22,8 +26,8 @@ The API uses two styles of request, so you can learn both.
 
 | Style | Endpoints | How you send input | What you get back |
 |-------|-----------|--------------------|-------------------|
-| Query parameters | `/add`, `/fibs` | In the URL: `?a=3&b=4` | Plain text (JSON optional for `/fibs`) |
-| JSON body | `/range`, `/product`, `/sort`, `/store` | `POST`/`PUT` with a JSON body | JSON |
+| Query parameters | `/add`, `/fibs`, `/random` | In the URL: `?a=3&b=4` | Plain text (JSON optional for `/fibs` and `/random`) |
+| JSON body | `/range`, `/product`, `/sum`, `/average`, `/stats`, `/sort`, `/store` | `POST`/`PUT` with a JSON body | JSON |
 
 When sending a JSON body, you must set the `Content-Type` header:
 
@@ -32,6 +36,8 @@ When sending a JSON body, you must set the `Content-Type` header:
 ```
 
 Without it, the server responds with `415 Unsupported Media Type`.
+
+Errors are always JSON with an `error` field. See [Errors](#errors).
 
 `curl -d '...'` sends a `POST` request by default. Use `-X PUT` or
 `-X DELETE` to send other methods.
@@ -137,6 +143,61 @@ $ curl 'https://numbers.apps.pipal.in/fibs?a=3&b=4&n=5&format=json'
 
 ---
 
+## Random
+
+Returns random integers between `min` and `max`, both included.
+
+```
+GET /random
+```
+
+**Query parameters**
+
+| Name     | Type   | Default | Description |
+|----------|--------|---------|-------------|
+| `min`    | int    | `1`     | Smallest possible number |
+| `max`    | int    | `100`   | Largest possible number, inclusive |
+| `count`  | int    | `1`     | How many numbers to return, 1 to 1000 |
+| `format` | string | (text)  | Set to `json` to get a JSON response |
+
+**Response:** plain text with one number per line, or JSON when `format=json`.
+The numbers change on every request.
+
+**Examples**
+
+Roll a die ten times:
+
+```
+$ curl 'https://numbers.apps.pipal.in/random?min=1&max=6&count=10'
+1
+1
+2
+4
+3
+6
+5
+3
+6
+5
+```
+
+Three numbers between 1 and 100, as JSON:
+
+```
+$ curl 'https://numbers.apps.pipal.in/random?count=3&format=json'
+{"result":[29,48,7]}
+```
+
+`min` greater than `max`, or a `count` outside 1 to 1000, returns
+`400 Bad Request`:
+
+```
+$ curl 'https://numbers.apps.pipal.in/random?min=7&max=6'
+{"error":"min must not be greater than max"}
+```
+
+---
+
 ## Range
 
 Generates a sequence of integers from `start` up to (but not including) `stop`,
@@ -220,12 +281,17 @@ POST /product
 {"result": 120}
 ```
 
-The product of an empty list is `1`. If `numbers` is missing or contains
-anything other than numbers, the response is `400 Bad Request`:
+The product of an empty list is `1`.
 
-```json
-{"error": "numbers must be a list of numbers"}
-```
+If `numbers` is missing, isn't a list, or contains anything other than
+numbers, the response is `400 Bad Request` with a message naming the problem.
+This applies to every endpoint that takes `numbers`:
+
+| Body | Error |
+|------|-------|
+| `{}` | `{"error":"numbers is required"}` |
+| `{"numbers": "1,2"}` | `{"error":"numbers must be a list"}` |
+| `{"numbers": [1, "2"]}` | `{"error":"numbers must contain only numbers"}` |
 
 **Example**
 
@@ -236,6 +302,124 @@ $ curl \
     https://numbers.apps.pipal.in/product
 {"result":120}
 ```
+
+---
+
+## Sum
+
+Adds up a list of numbers.
+
+```
+POST /sum
+```
+
+**Request body (JSON)**
+
+| Field     | Type            | Required | Description |
+|-----------|-----------------|----------|-------------|
+| `numbers` | list of numbers | yes      | Numbers to add |
+
+**Response (JSON)**
+
+```json
+{"result": 15}
+```
+
+The sum of an empty list is `0`. Invalid input returns `400 Bad Request`, as
+for [Product](#product).
+
+**Example**
+
+```
+$ curl \
+    -H 'Content-Type: application/json' \
+    -d '{"numbers": [1, 2, 3, 4, 5]}' \
+    https://numbers.apps.pipal.in/sum
+{"result":15}
+```
+
+---
+
+## Average
+
+Returns the mean of a list of numbers. The result is always a decimal number.
+
+```
+POST /average
+```
+
+**Request body (JSON)**
+
+| Field     | Type            | Required | Description |
+|-----------|-----------------|----------|-------------|
+| `numbers` | list of numbers | yes      | Numbers to average; must not be empty |
+
+**Response (JSON)**
+
+```json
+{"result": 3.0}
+```
+
+**Example**
+
+```
+$ curl \
+    -H 'Content-Type: application/json' \
+    -d '{"numbers": [1, 2, 3, 4, 5]}' \
+    https://numbers.apps.pipal.in/average
+{"result":3.0}
+```
+
+The average of an empty list is undefined, so it returns `400 Bad Request`:
+
+```
+$ curl \
+    -H 'Content-Type: application/json' \
+    -d '{"numbers": []}' \
+    https://numbers.apps.pipal.in/average
+{"error":"numbers must not be empty"}
+```
+
+Other invalid input returns `400 Bad Request`, as for [Product](#product).
+
+---
+
+## Stats
+
+Returns several statistics about a list of numbers in one response.
+
+```
+POST /stats
+```
+
+**Request body (JSON)**
+
+| Field     | Type            | Required | Description |
+|-----------|-----------------|----------|-------------|
+| `numbers` | list of numbers | yes      | Numbers to summarize; must not be empty |
+
+**Response (JSON)**
+
+| Field   | Description |
+|---------|-------------|
+| `count` | How many numbers |
+| `sum`   | Their sum |
+| `mean`  | Their average |
+| `min`   | The smallest number |
+| `max`   | The largest number |
+
+**Example**
+
+```
+$ curl \
+    -H 'Content-Type: application/json' \
+    -d '{"numbers": [1, 2, 3, 4, 5]}' \
+    https://numbers.apps.pipal.in/stats
+{"count":5,"sum":15,"mean":3.0,"min":1,"max":5}
+```
+
+An empty list returns `400 Bad Request`, as for [Average](#average). Other
+invalid input returns `400 Bad Request`, as for [Product](#product).
 
 ---
 
@@ -346,7 +530,7 @@ $ curl -i https://numbers.apps.pipal.in/store/nope
 HTTP/1.1 404 NOT FOUND
 Content-Type: application/json
 
-{"error":"not-found"}
+{"error":"not found"}
 ```
 
 ### Set a value
@@ -412,27 +596,52 @@ $ curl -X DELETE -H 'Authorization: Bearer abcd1234' \
 {"ok":true}
 
 $ curl https://numbers.apps.pipal.in/store/lucky
-{"error":"not-found"}
+{"error":"not found"}
 ```
 
 ---
 
 ## Errors
 
-Errors from the API itself have a JSON body with an `error` field:
+Every error has a JSON body with an `error` field saying what went wrong:
 
 ```json
-{"error": "numbers must be a list of numbers"}
+{"error": "numbers is required"}
 ```
 
 | Status | Meaning | When it happens |
 |--------|---------|-----------------|
 | `200 OK` | Success | |
-| `400 Bad Request` | Invalid input | A parameter or field is missing, has the wrong type, or the body isn't a JSON object |
+| `400 Bad Request` | Invalid input | A parameter or field is missing or has the wrong type, or the body is missing, isn't valid JSON, or isn't a JSON object |
 | `401 Unauthorized` | Bad or missing token | `PUT`/`DELETE` on `/store/<name>` without `Authorization: Bearer abcd1234` |
 | `404 Not Found` | No such resource | `GET /store/<name>` for a name that isn't stored, or an unknown URL |
 | `405 Method Not Allowed` | Wrong HTTP method | e.g. `GET /range`, or `POST /store/x` (use `PUT`) |
-| `415 Unsupported Media Type` | Body isn't declared as JSON | `POST`/`PUT` without `Content-Type: application/json` |
+| `415 Unsupported Media Type` | Body isn't declared as JSON | `POST`/`PUT` with a body but without `Content-Type: application/json` |
+| `500 Internal Server Error` | Bug in the server | Shouldn't happen; please report it |
 
-`404` for unknown URLs, `405` and `415` come from the web framework, and
-their body is HTML, not JSON.
+**Examples**
+
+```
+$ curl -X POST https://numbers.apps.pipal.in/sum
+{"error":"request body is required"}
+
+$ curl -H 'Content-Type: application/json' -d '{numbers:' \
+    https://numbers.apps.pipal.in/sum
+{"error":"request body is not valid JSON"}
+
+$ curl -d '{"numbers": [1, 2]}' https://numbers.apps.pipal.in/sum
+{"error":"Content-Type must be application/json"}
+
+$ curl -i https://numbers.apps.pipal.in/product
+HTTP/1.1 405 METHOD NOT ALLOWED
+Allow: OPTIONS, POST
+Content-Type: application/json
+
+{"error":"method not allowed"}
+
+$ curl https://numbers.apps.pipal.in/nope
+{"error":"not found"}
+```
+
+A `405` response includes an `Allow` header listing the methods the endpoint
+accepts.
